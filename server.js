@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const Entry = require('./entry');
-const fetch = require('node-fetch');
+const fetch = require('node-fetch-commonjs');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 
