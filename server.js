@@ -19,7 +19,7 @@ require('dotenv').config();
 app.use(cors()); // Enable CORS for all routes
 app.use(express.json());
 
-uri = process.env.DB_URL
+const uri = process.env.DB_URL;
 localuri = 'mongodb://localhost:27017/leaderboard'
 const apiKey = process.env.YT_APIKEY;
 
@@ -33,8 +33,10 @@ const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 db.once('open', () => {
   console.log('Connected to MongoDB database');
+  console.log('Database:', db.name);
   updateViews();
 });
+
 
 // *_*_*_*_*_*_*_*_*_*_*
 // CALCULATING VIEWS SAGA
@@ -355,7 +357,8 @@ const updateViews = async () => {
   try {
       while (true) {
           const entries = await Entry.find(); // Fetch entries from the database
-          
+          console.log(`Retrieved ${entries.length} entries from the database`);
+
           for (const entry of entries) {
               try {
                   // Step 1: Grab last total, mention, and coverage views
