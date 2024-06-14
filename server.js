@@ -34,7 +34,7 @@ db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 db.once('open', () => {
   console.log('Connected to MongoDB database');
   console.log('Database:', db.name);
-  updateViews();
+  'updateViews();'
 });
 
 
@@ -357,52 +357,67 @@ const updateViews = async () => {
   try {
       while (true) {
           const entries = await Entry.find(); // Fetch entries from the database
-          console.log(`Retrieved ${entries.length} entries from the database`);
-
+          
           for (const entry of entries) {
               try {
-                  // Step 1: Grab last total, mention, and coverage views
-                  const lastTotalViews = entry.total_views || 0;
+                // Step 1: Grab last total, mention, and coverage views
+                const lastTotalViews = entry.total_views || 0;
+                const lastDailyViews = entry.daily_views || 0;
+                let lastWeeklyViews = entry.weekly_views || 0;
+                let lastMonthlyViews = entry.monthly_views || 0; 
+
+                // Step 2: Calculate total views
+                const { totalViews } = await calculateTotalViews(entry);
+                console.log(`${entry.name}: has ${lastTotalViews} total views before this calculation`);
+
+                const periodViews = totalViews - lastTotalViews;
+                console.log(`${entry.name}: found ${periodViews} period views`);
+
+                // Step 3: Catch deleted main views
+                if (periodViews < 0) {
+                  await updateDeletedLinksAndManualViews(entry, periodViews, lastDailyViews, 0, 0);
+                  // Revert daily views if they were negative due to deleted links
+                  let revertedDailyViews = periodViews >= 0 ? entry.daily_views : lastDailyViews;
+                  entry.daily_views = revertedDailyViews;
+                  entry.weekly_views = lastWeeklyViews;
+                  entry.monthly_views = lastMonthlyViews;
+                }
+
+                if (updatedCount === 1) {
+                  // Only calculate mention and coverage views if updatedCount is 1
+                  const { totalMentionViews, totalCoverageViews } = await calculateTotalViews(entry);
                   const lastMentionViews = entry.mention_views || 0;
                   const lastCoverageViews = entry.coverage_views || 0;
-                  const lastDailyViews = entry.daily_views || 0;
-                  let lastWeeklyViews = entry.weekly_views || 0;
-                  let lastMonthlyViews = entry.monthly_views || 0; 
-  
-                  // Step 2: period views
-                  const { totalViews, totalMentionViews, totalCoverageViews } = await calculateTotalViews(entry);
-                  console.log(`${entry.name}: has ${lastTotalViews} total views before this calculation`);
+
                   console.log(`${entry.name}: has ${lastMentionViews} mention views before this calculation`);
                   console.log(`${entry.name}: has ${lastCoverageViews} coverage views before this calculation`);
-                  const periodViews = totalViews - lastTotalViews;
-                  console.log(`${entry.name}: found ${periodViews} period views`);
+
                   const todaysCoverage = totalCoverageViews - lastCoverageViews;
                   console.log(`${entry.name}: found ${todaysCoverage} today coverage views`);
+
                   const todaysMention = totalMentionViews - lastMentionViews;
                   console.log(`${entry.name}: found ${todaysMention} today mention views`);
-  
-                  // Step 3: Update timed views
-                  await updateDailyViews(entry, periodViews, updatedCount);
-                  await updateWeeklyViews(entry, periodViews);
-                  await updateMonthlyViews(entry, periodViews);
 
-                  // Step 4: Catch deleted links
-                  if (periodViews < 0 || todaysMention < 0 || todaysCoverage < 0) {
+                  // Catch deleted links for mention and coverage views
+                  if (todaysMention < 0 || todaysCoverage < 0) {
                     await updateDeletedLinksAndManualViews(entry, periodViews, lastDailyViews, todaysCoverage, todaysMention);
-                    // Revert daily views if they were negative due to deleted links
-                    let revertedDailyViews = periodViews >= 0 ? entry.daily_views : lastDailyViews;
-                    entry.daily_views = revertedDailyViews;
-                    entry.weekly_views = lastWeeklyViews;
-                    entry.monthly_views = lastMonthlyViews;
                   }
-  
-                  // Step 5: Update entry with total, mention, and coverage views
-                  entry.total_views = totalViews;
+
+                  // Update mention and coverage views in the entry
                   entry.mention_views = totalMentionViews;
                   entry.coverage_views = totalCoverageViews;
-  
-                  // Save updated entry back to the database
-                  await entry.save();
+                }
+
+                // Update timed views
+                await updateDailyViews(entry, periodViews, updatedCount);
+                await updateWeeklyViews(entry, periodViews);
+                await updateMonthlyViews(entry, periodViews);
+
+                // Update total views in the entry
+                entry.total_views = totalViews;
+
+                // Save updated entry back to the database
+                await entry.save();
 
               } catch (error) {
                   console.error('Error updating views for an entry:', error);
@@ -425,7 +440,7 @@ const updateViews = async () => {
   }
 };
 
-const TTL_IN_SECONDS = 3600
+const TTL_IN_SECONDS = 750
 
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -445,11 +460,11 @@ const hashedPassword = process.env.HASHED_PASSWORD;
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
 
-  console.log('Received username:', username);
-  console.log('Received password:', password);
+/*   console.log('Received username:', username);
+  console.log('Received password:', password); */
   
   // Check if the provided username matches the configured username
-  console.log('Expected username (from environment variable):', expectedUsername);
+/*   console.log('Expected username (from environment variable):', expectedUsername); */
   if (username !== expectedUsername) {
     console.log('Invalid username:', username);
     return res.status(401).json({ error: 'Invalid username' });
@@ -545,30 +560,34 @@ app.get('/api', rateLimit, async (req, res) => {
       backendCache.set('entries', entries, TTL_IN_SECONDS);
     }
 
-    if (req.query.IncludeNotOnlyOnLostwave === 'true') {
+    if (req.query.olw === 'true') {
       entries = entries.filter(entry => entry.as_seen_lw === 'SEEN' || entry.as_seen_lw === 'UNSEEN');
     } else {
       entries = entries.filter(entry => entry.as_seen_lw === 'SEEN');
     }
 
-    if (req.query.OnlyFound) {
+    if (req.query.f) {
       entries = entries.filter(entry => entry.status !== 'LOST');
     }
 
-    if (req.query.OnlyLost) {
+    if (req.query.l) {
       entries = entries.filter(entry => entry.status !== 'FOUND');
     }
 
-    if (!req.query.IncludeHidden) {
+    if (!req.query.h) {
       entries = entries.filter(entry => !entry.is_hide);
     }
 
-    if (req.query.excludeHoaxes) {
+    if (req.query.hx) {
       entries = entries.filter(entry => entry.is_hoax !== 'TRUE');
     }
 
-    if (req.query.sortBy === 'displayedViews') {
+    if (req.query.sortBy === 'asc_views') {
       entries.sort((a, b) => calculateDisplayedViews(b, req.query) - calculateDisplayedViews(a, req.query));
+    }
+
+    if (req.query.sortBy === 'desc_views') {
+      entries.sort((a, b) => calculateDisplayedViews(a, req.query) - calculateDisplayedViews(b, req.query));
     }
 
     const publicProjection = {
