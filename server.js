@@ -123,51 +123,68 @@ const calculateTotalViews = async (entry) => {
       const name = entry.name
       const mainYoutubeLink = entry.main_youtube_link;
       const additionalLinks = entry.additional_links || [];
-      const mentionLinks = entry.mention_links || [];
-      const coverageLinks = entry.coverage_links || [];
       const manualYt = entry.manual_yt || 0;
-      const manualCoverage = entry.manual_coverage || 0;
-      const manualMention = entry.manual_mention || 0;
-
 
       // Extract video IDs from YouTube video links
       const mainYoutubeId = mainYoutubeLink.split('v=')[1];
       const additionalIds = additionalLinks.map(link => link.split('v=')[1]);
-      const mentionIds = mentionLinks.map(link => link.split('v=')[1]);
-      const coverageIds = coverageLinks.map(link => link.split('v=')[1]);
 
       // Fetch view counts for main YouTube link and all additional links using batching
       const mainViews = await getYouTubeViews([mainYoutubeId]);
       const additionalViews = await getYouTubeViews(additionalIds);
-      const mentionViews = await getYouTubeViews(mentionIds);
-      const coverageViews = await getYouTubeViews(coverageIds);
 
       // Calculate total views including manual YT input
       const totalViews = Object.values(mainViews).reduce((acc, val) => acc + val, 0) +
           Object.values(additionalViews).reduce((acc, val) => acc + val, 0) + manualYt;
+
+      // Print the views for each link or if a link is not found
+      console.log({ name: entry.name });
+      for (const [link, views] of Object.entries(mainViews)) {
+          console.log(`${link}: +${views} main views`);
+      }
+      for (const [link, views] of Object.entries(additionalViews)) {
+          console.log(`${link}: +${views} additional views`);
+      }
+      console.log(`totalViews: ${totalViews}`);
+      return { totalViews };
+  } catch (error) {
+      console.error(`Error calculating total views: ${error}`);
+      return { totalViews: 0 };
+  }
+};
+
+// Function to calculate mention and coverage views
+const calculateMentionAndCoverageViews = async (entry) => {
+  try {
+      const mentionLinks = entry.mention_links || [];
+      const coverageLinks = entry.coverage_links || [];
+      const manualCoverage = entry.manual_coverage || 0;
+      const manualMention = entry.manual_mention || 0;
+
+      const mentionIds = mentionLinks.map(link => link.split('v=')[1]);
+      const coverageIds = coverageLinks.map(link => link.split('v=')[1]);
+
+      // Fetch view counts for main YouTube link and all additional links using batching
+      const mentionViews = await getYouTubeViews(mentionIds);
+      const coverageViews = await getYouTubeViews(coverageIds);
+
+      // Calculate total views including manual YT input
       const totalMentionViews = Object.values(mentionViews).reduce((acc, val) => acc + val, 0) + manualMention;
       const totalCoverageViews = Object.values(coverageViews).reduce((acc, val) => acc + val, 0) + manualCoverage;
 
       // Print the views for each link or if a link is not found
-      console.log({name})
-      for (const [link, views] of Object.entries(mainViews)) {
-          'console.log(`${link}: +${views} main views`);'
-      }
-      for (const [link, views] of Object.entries(additionalViews)) {
-          'console.log(`${link}: +${views} additional views`);'
-      }
       for (const [link, views] of Object.entries(mentionViews)) {
           'console.log(`${link}: +${views} mention views`);'
       }
       for (const [link, views] of Object.entries(coverageViews)) {
           'console.log(`${link}: +${views} coverage views`);'
       }
-      console.log(`totalViews: ${totalViews}, mentionViews: ${totalMentionViews}, coverageViews: ${totalCoverageViews}`);
-      return { totalViews, totalMentionViews, totalCoverageViews };
-    } catch (error) {
-        console.error(`Error calculating total views: ${error}`);
-        return { totalViews: 0, totalMentionViews: 0, totalCoverageViews: 0 };
-    }
+      console.log(`mentionViews: ${totalMentionViews}, coverageViews: ${totalCoverageViews}`);
+      return { totalMentionViews, totalCoverageViews };
+  } catch (error) {
+      console.error(`Error calculating mention and coverage views: ${error}`);
+      return { totalMentionViews: 0, totalCoverageViews: 0 };
+  }
 };
 
 const updateDailyViews = (entry, periodViews, updatedCount) => {
@@ -352,7 +369,7 @@ const catchDeletedLinks = async (links) => {
 // *_*_*_*_*_*_*_*_*
 
 const updateViews = async () => {
-  let updatedCount = 0;
+  let updatedCount = 4;
 
   try {
       while (true) {
@@ -385,7 +402,7 @@ const updateViews = async () => {
 
                 if (updatedCount === 1) {
                   // Only calculate mention and coverage views if updatedCount is 1
-                  const { totalMentionViews, totalCoverageViews } = await calculateTotalViews(entry);
+                  const { totalMentionViews, totalCoverageViews } = await calculateMentionAndCoverageViews(entry);
                   const lastMentionViews = entry.mention_views || 0;
                   const lastCoverageViews = entry.coverage_views || 0;
 
